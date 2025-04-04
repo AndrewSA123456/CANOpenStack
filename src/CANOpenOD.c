@@ -583,6 +583,11 @@ static uint32_t requestControl(uint16_t index,
 					objEntrySize = 16;
 				}
 				break;
+				case OD_DOMAIN:
+				{
+					objEntrySize = 0;
+				}
+				break;
 			}
 			if(objEntrySize != buffSize)
 			{
@@ -605,8 +610,10 @@ uint32_t readObjectOD(uint16_t index, uint8_t subindex, uint8_t *buff, uint16_t 
 	{
 		return errCode;
 	}
-	memcpy(buff,objDictionary[objNum]->entry->data,buffSize);
-
+	if(buff != NULL && buffSize != 0)
+	{
+		memcpy(buff,objDictionary[objNum]->entry->data,buffSize);
+	}
 	return errCode;
 }
 /////////////////////////////////////////////////////////////////////
@@ -620,7 +627,9 @@ uint32_t writeObjectOD(uint16_t index, uint8_t subindex, uint8_t *buff, uint16_t
 	{
 		return errCode;
 	}
-	memcpy(objDictionary[objNum]->entry->data,buff,buffSize);
-
+	if(buff != NULL && buffSize != 0)
+	{
+		memcpy(objDictionary[objNum]->entry->data,buff,buffSize);
+	}
 	return errCode;
 }
