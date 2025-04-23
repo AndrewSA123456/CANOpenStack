@@ -9,11 +9,7 @@ typedef struct
 	uint8_t len;
 	uint8_t data[8];
 } canFrame_t;
-enum
-{
-	CAN_SUCCESS,
-	CAN_ERROR
-};
+
 /////////////////////////////////////////////////////////////////////
 // Функция: инициализация CAN
 int initCAN(void);

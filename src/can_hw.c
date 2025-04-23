@@ -10,6 +10,13 @@
 #endif
 #ifdef STM32
 #endif
+
+enum
+{
+	CAN_SUCCESS,
+	CAN_ERROR
+};
+
 int sockDesc = 0;
 /////////////////////////////////////////////////////////////////////
 // Функция: инициализация CAN
@@ -25,6 +32,8 @@ int initCAN(void)
 #endif
 #ifdef STM32
 #endif
+	printf("initCAN success\n");
+	return CAN_SUCCESS;
 }
 /////////////////////////////////////////////////////////////////////
 // Функция: деинициализация CAN
@@ -36,6 +45,7 @@ int deinitCAN(void)
 #endif
 #ifdef STM32
 #endif
+	return CAN_SUCCESS;
 }
 /////////////////////////////////////////////////////////////////////
 // Функция: установить фильтр CAN
@@ -63,7 +73,7 @@ int receiveCAN()
 #endif
 #ifdef STM32
 #endif
-	if (CANframeNew.id)
+	if (CANframeNew.data[0])
 	{
 		if (pushCANRingBuff(&ReceiveCANRingBuff, CANframeNew))
 			return EXIT_FAILURE;
