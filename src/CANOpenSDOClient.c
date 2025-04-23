@@ -1,93 +1,10 @@
-#include "CANOpenSDO.h"
+#include "CANOpen.h"
 #include "CANOpenOD.h"
+#include "CANOpenSDOClient.h"
+#include "ring_buff.h"
 
-#define RING_BUFF_SIZE 21
-typedef struct
-{
-	uint8_t data[RING_BUFF_SIZE];
-	uint32_t head;
-	uint32_t tail;
-} RingBuff;
-
-bool isBuffEmpty(RingBuff *buff);
-bool isBuffFull(RingBuff *buff);
-bool pushBuff(RingBuff *buff, uint8_t data);
-bool popBuff(RingBuff *buff, uint8_t *data);
-/////////////////////////////////////////////////////////////////////
-// Функция: Проверка, пуст ли буфер
-bool isBuffEmpty(RingBuff *buff)
-{
-	return buff->head == buff->tail;
-}
-/////////////////////////////////////////////////////////////////////
-// Функция: Проверка, полон ли буфер
-bool isBuffFull(RingBuff *buff)
-{
-	return (buff->tail + 1) % RING_BUFF_SIZE == buff->head;
-}
-/////////////////////////////////////////////////////////////////////
-// Функция: Добавление элемента в буфер
-bool pushBuff(RingBuff *buff, uint8_t data)
-{
-	if (isBuffFull(buff))
-	{
-		return false;
-	}
-	buff->data[buff->tail] = data;
-	buff->tail = (buff->tail + 1) % RING_BUFF_SIZE;
-	return true;
-}
-/////////////////////////////////////////////////////////////////////
-// Функция: Извлечение элемента из буфера
-bool popBuff(RingBuff *buff, uint8_t *data)
-{
-	if (isBuffEmpty(buff))
-	{
-		return false;
-	}
-	*data = buff->data[buff->head];
-	buff->head = (buff->head + 1) % RING_BUFF_SIZE;
-	return true;
-}
 /////////////////////////////////////////////////////////////////////
 // Функция:
-#define SDO_CS_Pos (5)
-#define SDO_CS_Msk ((uint8_t)(0x7 << SDO_CS_Pos))
-
-#define SDO_CS_ABORT ((uint8_t)0x4 << SDO_CS_Pos)
-
-#define SDO_CCS_DL_INIT ((uint8_t)(0x1 << SDO_CS_Pos))
-#define SDO_CCS_DL_SEG ((uint8_t)(0x0 << SDO_CS_Pos))
-#define SDO_CCS_UL_INIT ((uint8_t)(0x2 << SDO_CS_Pos))
-#define SDO_CCS_UL_SEG ((uint8_t)(0x3 << SDO_CS_Pos))
-
-#define SDO_SCS_DL_INIT ((uint8_t)(0x3 << SDO_CS_Pos))
-#define SDO_SCS_DL_SEG ((uint8_t)(0x20))
-#define SDO_SCS_DL_SEG_TOGGLED ((uint8_t)(0x30))
-#define SDO_SCS_UL_INIT ((uint8_t)(0x2 << SDO_CS_Pos))
-#define SDO_SCS_UL_SEG ((uint8_t)(0x0))
-#define SDO_SCS_UL_SEG_TOGGLED ((uint8_t)(0x10))
-
-#define SDO_E_Pos (1)
-#define SDO_E_Msk ((uint8_t)(0x1 << SDO_E_Pos))
-
-#define SDO_S_Pos (0)
-#define SDO_S_Msk ((uint8_t)(0x1 << SDO_S_Pos))
-
-#define SDO_N_INIT_Pos (2)
-#define SDO_N_INIT_Msk ((uint8_t)(0x3 << SDO_S_Pos))
-
-#define SDO_N_Pos (1)
-#define SDO_N_Msk ((uint8_t)(0x7 << SDO_S_Pos))
-
-#define SDO_T_Pos (4)
-#define SDO_T_Msk ((uint8_t)(0x1 << SDO_S_Pos))
-
-#define SDO_C_Pos (0)
-#define SDO_C_Msk ((uint8_t)(0x1 << SDO_C_Pos))
-
-#define ABORT_SDO_INVALID_SIZE_DATA (0x06070010U)
-
 canFrame_t canResponseMSG = {0};
 void CO_sdo_handler(canFrame_t *canRequestMsg)
 {
@@ -119,7 +36,7 @@ void CO_sdo_handler(canFrame_t *canRequestMsg)
 			index = (uint16_t)canRequestMsg->data[2] << 8;
 			index |= (uint16_t)canRequestMsg->data[1];
 			subindex = canRequestMsg->data[3];
-			memcpy(buff, canRequestMsg->data[4], buffSize);
+			memcpy(buff, canRequestMsg->data + 5, buffSize);
 			abortCode = writeObjectOD(index, subindex, buff, buffSize);
 		}
 		else
@@ -154,6 +71,7 @@ void CO_sdo_handler(canFrame_t *canRequestMsg)
 		}
 		else
 		{
+			clearBuff(&SDORingBuff);
 			canResponseMSG.data[0] = SDO_SCS_DL_INIT;
 			canResponseMSG.data[1] = canRequestMsg->data[1];
 			canResponseMSG.data[2] = canRequestMsg->data[2];
@@ -163,7 +81,6 @@ void CO_sdo_handler(canFrame_t *canRequestMsg)
 			canResponseMSG.data[6] = 0;
 			canResponseMSG.data[7] = 0;
 		}
-		// отправить
 	}
 	break;
 	case SDO_CCS_DL_SEG:
@@ -177,8 +94,7 @@ void CO_sdo_handler(canFrame_t *canRequestMsg)
 			}
 			for (int i = 0; i < 16; i++)
 			{
-				popBuff(&SDORingBuff, buff);
-				normalLoadBuff[i] = buff[0];
+				popBuff(&SDORingBuff, &normalLoadBuff[i]);
 			}
 			if (isBuffEmpty(&SDORingBuff))
 			{
@@ -199,8 +115,7 @@ void CO_sdo_handler(canFrame_t *canRequestMsg)
 			{
 				for (int i = 0; i < 16; i++)
 				{
-					popBuff(&SDORingBuff, buff);
-					normalLoadBuff[i] = buff[0];
+					popBuff(&SDORingBuff, &normalLoadBuff[i]);
 				}
 				abortCode = writeObjectOD(index, subindex, normalLoadBuff, 16);
 			}
@@ -234,10 +149,77 @@ void CO_sdo_handler(canFrame_t *canRequestMsg)
 	{
 		index = 0;
 		subindex = 0;
+		index = (uint16_t)canRequestMsg->data[2] << 8;
+		index |= (uint16_t)canRequestMsg->data[1];
+		subindex = canRequestMsg->data[3];
+		buffSize = 16;
+		abortCode = readObjectOD(index, subindex, normalLoadBuff, &buffSize);
+		if (abortCode)
+		{
+			canResponseMSG.data[0] = SDO_CS_ABORT;
+			canResponseMSG.data[1] = (uint8_t)(index & 0xFF);
+			canResponseMSG.data[2] = (uint8_t)((index >> 8) & 0xFF);
+			canResponseMSG.data[3] = subindex;
+			canResponseMSG.data[4] = (uint8_t)(abortCode);
+			canResponseMSG.data[5] = (uint8_t)((abortCode >> 8) & 0xFF);
+			canResponseMSG.data[6] = (uint8_t)((abortCode >> 16) & 0xFF);
+			canResponseMSG.data[7] = (uint8_t)((abortCode >> 24) & 0xFF);
+		}
+		else if (buffSize < 4)
+		{ // expedited transfer
+			canResponseMSG.data[0] = SDO_SCS_UL_INIT;
+			canResponseMSG.data[0] |= SDO_E_Msk;
+			if (buffSize < 3)
+			{
+				canResponseMSG.data[0] |= SDO_S_Msk;
+				canResponseMSG.data[0] |= (((uint8_t)(4 - buffSize)) << SDO_N_INIT_Pos);
+			}
+			canResponseMSG.data[1] = (uint8_t)(index & 0xFF);
+			canResponseMSG.data[2] = (uint8_t)((index >> 8) & 0xFF);
+			canResponseMSG.data[3] = subindex;
+			memset(canResponseMSG.data + 4, 0, 4);
+			memcpy(canResponseMSG.data + 4, normalLoadBuff, buffSize);
+		}
+		else
+		{ // initial segment transfer
+			canResponseMSG.data[0] = SDO_SCS_UL_INIT;
+			canResponseMSG.data[1] = (uint8_t)(index & 0xFF);
+			canResponseMSG.data[2] = (uint8_t)((index >> 8) & 0xFF);
+			canResponseMSG.data[3] = subindex;
+			clearBuff(&SDORingBuff);
+			for (int i = 0; i < buffSize; i++)
+			{
+				pushBuff(&SDORingBuff, normalLoadBuff[i]);
+			}
+			memset(canResponseMSG.data + 4, 0, 4);
+			canResponseMSG.data[4] = (uint8_t)buffSize;
+		}
 	}
 	break;
 	case SDO_CCS_UL_SEG:
 	{
+		canResponseMSG.data[0] = 0;
+		for (int i = 1; i < 8; i++)
+		{
+			if (popBuff(&SDORingBuff, &canResponseMSG.data[i]))
+			{
+				canResponseMSG.data[0] = (uint8_t)(7 - i);
+			}
+			else
+			{
+				canResponseMSG.data[i] = 0;
+			}
+		}
+		if (canResponseMSG.data[0])
+		{
+			canResponseMSG.data[0] <<= SDO_N_Pos;
+			canResponseMSG.data[0] |= SDO_C_Msk;
+		}
+		canResponseMSG.data[0] |=
+			canRequestMsg->data[0] & SDO_T_Msk ? SDO_SCS_UL_SEG_TOGGLED : SDO_SCS_UL_SEG;
+		canResponseMSG.data[1] = canRequestMsg->data[1];
+		canResponseMSG.data[2] = canRequestMsg->data[2];
+		canResponseMSG.data[3] = canRequestMsg->data[3];
 	}
 	break;
 	default:
@@ -245,4 +227,5 @@ void CO_sdo_handler(canFrame_t *canRequestMsg)
 	}
 	break;
 	}
+	transmitCAN(canResponseMSG);
 }

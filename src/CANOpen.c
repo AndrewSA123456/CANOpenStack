@@ -1,60 +1,77 @@
+#include "can_hw.h"
 #include "CANOpen.h"
 #include "CANOpenOD.h"
-#include "CANOpenSDO.h"
+#include "CANOpenSDOClient.h"
+
 typedef enum
 {
-	INIT,
-	RESET_APP,
-	RESET_COMM,
-	PRE_OPERATIONAL,
-	OPERATIONAL,
-	STOPPED
+	NMT_ERROR,
+	NMT_INIT,
+	NMT_RESET_APP,
+	NMT_RESET_COMM,
+	NMT_PRE_OPERATIONAL,
+	NMT_OPERATIONAL,
+	NMT_STOPPED
 } stateNMT_t;
 
 static void CO_init_state_handle(void);
 static void CO_reset_app_state_handle(void);
-static void CO_reset_comm_state_handle(void);
+static stateNMT_t CO_reset_comm_state_handle(void);
 static stateNMT_t CO_pre_operation_state_handle();
 static stateNMT_t CO_operation_state_handle();
 static stateNMT_t CO_stopped_state_handle();
 static stateNMT_t CO_nmt_handler(stateNMT_t currentState, canFrame_t *canMsg);
 
-bool newCanMsg = true;
-canFrame_t canMsg = {0};
+extern canFrame_t canReceiveMsg;
+canFrame_t canTransmitMsg = {0};
 
 /////////////////////////////////////////////////////////////////////
 // Функция:
 void CO_process(void)
 {
-	stateNMT_t CANOpenAppState = INIT;
+	static stateNMT_t CANOpenAppState = NMT_INIT;
 	switch (CANOpenAppState)
 	{
-	case INIT:
+	case NMT_INIT:
 	{
+		// printf("NMT state = INIT\n");
 		CO_init_state_handle();
 	}
-	case RESET_APP:
+	case NMT_RESET_APP:
 	{
+		// printf("NMT state = RESET_APP\n");
 		CO_reset_app_state_handle();
 	}
-	case RESET_COMM:
+	case NMT_RESET_COMM:
 	{
-		CO_reset_comm_state_handle();
+		deinitCAN();
+		if (initCAN())
+		{
+			return;
+		}
+		// printf("NMT state = RESET_COMM\n");
+		CANOpenAppState = CO_reset_comm_state_handle();
 	}
-	case PRE_OPERATIONAL:
+	case NMT_PRE_OPERATIONAL:
 	{
-		CANOpenAppState = PRE_OPERATIONAL; // Требуется т.к. из-за просачивания состояние может быть другое.
+		// printf("NMT state = PRE_OPERATIONAL\n");
 		CANOpenAppState = CO_pre_operation_state_handle();
 	}
 	break;
-	case OPERATIONAL:
+	case NMT_OPERATIONAL:
 	{
+		// printf("NMT state = OPERATIONAL\n");
 		CANOpenAppState = CO_operation_state_handle();
 	}
 	break;
-	case STOPPED:
+	case NMT_STOPPED:
 	{
+		// printf("NMT state = STOPPED\n");
 		CANOpenAppState = CO_stopped_state_handle();
+	}
+	break;
+	default:
+	{
 	}
 	break;
 	}
@@ -88,8 +105,15 @@ static void CO_reset_app_state_handle(void)
 // инициализации NMT завершается, и устройство CANopen выполняет
 // службу NMT "запись при загрузке" и переходит в состояние NMT
 // "предоперационный режим".
-static void CO_reset_comm_state_handle(void)
+static stateNMT_t CO_reset_comm_state_handle(void)
 {
+	// перед выходом должны отправить сообщение: cansend (интерфейс) NMT_ERR_CTRL_ID#00
+	canTransmitMsg.id = NMT_ERR_CTRL_ID(NODE_ID);
+	canTransmitMsg.len = 1;
+	memset(canTransmitMsg.data, 0, sizeof(canTransmitMsg.data));
+	if (transmitCAN(canTransmitMsg))
+		return NMT_ERROR;
+	return NMT_PRE_OPERATIONAL;
 }
 /////////////////////////////////////////////////////////////////////
 // Функция: **Предоперационный режим**:
@@ -103,24 +127,25 @@ static void CO_reset_comm_state_handle(void)
 // или с помощью локального управления.
 static stateNMT_t CO_pre_operation_state_handle(void)
 {
-	// сразу после входа должны отправить сообщение: cansend (интерфейс) NMT_ERR_CTRL_ID#00
-	if (newCanMsg)
+	canFrame_t canReceiveMSG = {0};
+	if (!isCANRingBuffEmpty(&ReceiveCANRingBuff))
 	{
-		switch (canMsg.id)
+		popCANRingBuff(&ReceiveCANRingBuff, &canReceiveMSG);
+		switch (canReceiveMSG.id)
 		{
 		case NMT_ID:
 		{
-			return CO_nmt_handler(PRE_OPERATIONAL, &canMsg);
+			return CO_nmt_handler(NMT_PRE_OPERATIONAL, &canReceiveMSG);
 		}
 		break;
-		case SDO_ID_REQUEST:
+		case SDO_REQUEST_ID(NODE_ID):
 		{
-			CO_sdo_handler(&canMsg);
+			CO_sdo_handler(&canReceiveMSG);
 		}
 		break;
 		}
 	}
-	return PRE_OPERATIONAL;
+	return NMT_PRE_OPERATIONAL;
 }
 /////////////////////////////////////////////////////////////////////
 // Функция: **Операционный режим NMT**:
@@ -134,13 +159,15 @@ static stateNMT_t CO_pre_operation_state_handle(void)
 // содержать приложение, которое нельзя изменять во время выполнения.
 static stateNMT_t CO_operation_state_handle(void)
 {
-	if (newCanMsg)
+	canFrame_t canReceiveMSG = {0};
+	if (!isCANRingBuffEmpty(&ReceiveCANRingBuff))
 	{
-		switch (canMsg.id)
+		popCANRingBuff(&ReceiveCANRingBuff, &canReceiveMSG);
+		switch (canReceiveMSG.id)
 		{
 		case NMT_ID:
 		{
-			return CO_nmt_handler(PRE_OPERATIONAL, &canMsg);
+			return CO_nmt_handler(NMT_OPERATIONAL, &canReceiveMSG);
 		}
 		break;
 		// case SYNC_ID:
@@ -163,14 +190,14 @@ static stateNMT_t CO_operation_state_handle(void)
 		// 	return
 		// }
 		// break;
-		case SDO_ID_REQUEST:
+		case SDO_REQUEST_ID(NODE_ID):
 		{
-			CO_sdo_handler(&canMsg);
+			CO_sdo_handler(&canReceiveMSG);
 		}
 		break;
 		}
 	}
-	return OPERATIONAL;
+	return NMT_OPERATIONAL;
 }
 /////////////////////////////////////////////////////////////////////
 // Функция: **Остановленное состояние NMT**:
@@ -187,11 +214,49 @@ static stateNMT_t CO_operation_state_handle(void)
 // в другое состояние NMT.
 static stateNMT_t CO_stopped_state_handle(void)
 {
-	return STOPPED;
+	canFrame_t canReceiveMSG = {0};
+	if (!isCANRingBuffEmpty(&ReceiveCANRingBuff))
+	{
+		popCANRingBuff(&ReceiveCANRingBuff, &canReceiveMSG);
+		switch (canReceiveMSG.id)
+		{
+		case NMT_ID:
+		{
+			return CO_nmt_handler(NMT_OPERATIONAL, &canReceiveMSG);
+		}
+		break;
+		// case SYNC_ID:
+		// {
+		// 	return
+		// }
+		// break;
+		// case EMCY_ID:
+		// {
+		// 	return
+		// }
+		// break;
+		// case TIME_STAMP_ID:
+		// {
+		// 	return
+		// }
+		// break;
+		// case NMT_ERR_CTRL_ID:
+		// {
+		// 	return
+		// }
+		// break;
+		case SDO_REQUEST_ID(NODE_ID):
+		{
+			CO_sdo_handler(&canReceiveMSG);
+		}
+		break;
+		}
+	}
+	return NMT_STOPPED;
 }
 /////////////////////////////////////////////////////////////////////
 // Функция:
-typedef enum
+enum
 {
 	CS_NMT_OPERATIONAL = 0x1,
 	CS_NMT_STOPPED = 0x2,
@@ -212,23 +277,40 @@ static stateNMT_t CO_nmt_handler(stateNMT_t currentState, canFrame_t *canMsg)
 		switch (canMsg->data[0])
 		{
 		case CS_NMT_OPERATIONAL:
-			return OPERATIONAL;
-			break;
+		{
+			printf("NMT state = NMT_OPERATIONAL\n");
+			return NMT_OPERATIONAL;
+		}
+		break;
 		case CS_NMT_STOPPED:
-			return STOPPED;
-			break;
+		{
+			printf("NMT state = NMT_STOPPED\n");
+			return NMT_STOPPED;
+		}
+		break;
 		case CS_NMT_PRE_OPERATIONAL:
-			return PRE_OPERATIONAL;
-			break;
+		{
+			printf("NMT state = NMT_PRE_OPERATIONAL\n");
+			return NMT_PRE_OPERATIONAL;
+		}
+		break;
 		case CS_NMT_RESET_APP:
-			return RESET_APP;
-			break;
+		{
+			printf("NMT state = NMT_RESET_APP\n");
+			return NMT_RESET_APP;
+		}
+		break;
 		case CS_NMT_RESET_COMM:
-			return RESET_COMM;
-			break;
+		{
+			printf("NMT state = NMT_RESET_COMM\n");
+			return NMT_RESET_COMM;
+		}
+		break;
 		default:
+		{
 			return currentState;
-			break;
+		}
+		break;
 		}
 	}
 	else
@@ -236,4 +318,3 @@ static stateNMT_t CO_nmt_handler(stateNMT_t currentState, canFrame_t *canMsg)
 		return currentState;
 	}
 }
-

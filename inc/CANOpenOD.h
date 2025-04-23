@@ -14,7 +14,7 @@ enum
 };
 
 void initOD(void);
-uint32_t readObjectOD(uint16_t index, uint8_t subindex, uint8_t *buff, uint16_t buffSize);
+uint32_t readObjectOD(uint16_t index, uint8_t subindex, uint8_t *buff, uint16_t *buffSize);
 uint32_t writeObjectOD(uint16_t index, uint8_t subindex, uint8_t *buff, uint16_t buffSize);
 
 #endif //__CANOPENOD_H
