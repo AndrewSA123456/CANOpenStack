@@ -85,7 +85,7 @@ int receiveCAN()
 int transmitCAN(canFrame_t CANframe)
 {
 #ifdef LINUX
-	socketCANTransmit(sockDesc, CANframe.id, CANframe.len, CANframe.data);
+	return socketCANTransmit(sockDesc, CANframe.id, CANframe.len, CANframe.data);
 #endif
 #ifdef STM32
 #endif

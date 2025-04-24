@@ -63,13 +63,15 @@ typedef enum
 #define SDO_S_Msk ((uint8_t)(0x1 << SDO_S_Pos))
 
 #define SDO_N_INIT_Pos (2)
-#define SDO_N_INIT_Msk ((uint8_t)(0x3 << SDO_S_Pos))
+#define SDO_N_INIT_Msk ((uint8_t)(0x3 << SDO_N_INIT_Pos))
+#define SDO_N_INIT_SIZE_DATA(byte) (4 - ((byte & SDO_N_INIT_Msk) >> SDO_N_INIT_Pos))
 
 #define SDO_N_Pos (1)
-#define SDO_N_Msk ((uint8_t)(0x7 << SDO_S_Pos))
+#define SDO_N_Msk ((uint8_t)(0x7 << SDO_N_Pos))
+#define SDO_N_SIZE_DATA(byte) (7 - ((byte & SDO_N_Msk) >> SDO_N_Pos))
 
 #define SDO_T_Pos (4)
-#define SDO_T_Msk ((uint8_t)(0x1 << SDO_S_Pos))
+#define SDO_T_Msk ((uint8_t)(0x1 << SDO_T_Pos))
 
 #define SDO_C_Pos (0)
 #define SDO_C_Msk ((uint8_t)(0x1 << SDO_C_Pos))

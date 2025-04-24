@@ -519,6 +519,7 @@ void initOD(void)
 	objDictionary[0] = &deviceTypeObj;
 	objDictionary[1] = &deviceTypeObj;
 	objDictionary[2] = &errorRegisterObj;
+	memcpy(manufacturerDeviceNameObj.entry->data, "invertorTest123", (strlen("invertorTest123") + 1));
 	objDictionary[3] = &manufacturerDeviceNameObj;
 	objDictionary[4] = &consumerHeartbeatTimeObj;
 	objDictionary[5] = &producerHeartbeatTimeObj;
@@ -526,32 +527,31 @@ void initOD(void)
 	objDictionary[7] = &nmtStartupObj;
 	objDictionary[8] = &programControlObj;
 }
-
+/////////////////////////////////////////////////////////////////////
+// Функция:
 enum
 {
 	WRITE_REQUEST = 1,
 	READ_REQUEST
 };
-/////////////////////////////////////////////////////////////////////
-// Функция:
 static uint32_t requestControl(uint16_t index,
 							   uint8_t subindex,
 							   uint16_t requestType,
 							   uint16_t *objNum,
-							   uint16_t *objEntrySize)
+							   uint32_t *objEntrySize)
 {
 	for (uint16_t i = 0; i < OBJECT_DICTIONARY_SIZE; i++)
 	{
 		if (objDictionary[i]->index == index)
 		{
 			*objNum = i;
-			if (objDictionary[*objNum]->subindexNum >= subindex)
+			if (objDictionary[*objNum]->subindexNum < subindex)
 			{
 				return SUBINDEX_NOT_EXIST_IN_OD;
 			}
-			if (objDictionary[*objNum]->entry[subindex].access == OD_WO && requestType == READ_REQUEST ||
-				objDictionary[*objNum]->entry[subindex].access == OD_RO && requestType == WRITE_REQUEST ||
-				objDictionary[*objNum]->entry[subindex].access == OD_CONST && requestType == WRITE_REQUEST)
+			if ((objDictionary[*objNum]->entry[subindex].access == OD_WO) && (requestType == READ_REQUEST) ||
+				(objDictionary[*objNum]->entry[subindex].access == OD_RO) && (requestType == WRITE_REQUEST) ||
+				(objDictionary[*objNum]->entry[subindex].access == OD_CONST) && (requestType == WRITE_REQUEST))
 			{
 				return UNSUPPORTED_ACCESS_TO_AN_OBJECT;
 			}
@@ -596,11 +596,11 @@ static uint32_t requestControl(uint16_t index,
 
 /////////////////////////////////////////////////////////////////////
 // Функция:
-uint32_t readObjectOD(uint16_t index, uint8_t subindex, uint8_t *buff, uint16_t *buffSize)
+uint32_t readObjectOD(uint16_t index, uint8_t subindex, uint8_t *buff, uint32_t *buffSize)
 {
 	uint32_t errCode = INTERACTION_SUCCESSFUL;
 	uint16_t objNum = 0;
-	uint16_t objEntrySize = 0;
+	uint32_t objEntrySize = 0;
 	errCode = requestControl(index, subindex, READ_REQUEST, &objNum, &objEntrySize);
 
 	if (errCode)
@@ -626,11 +626,11 @@ uint32_t readObjectOD(uint16_t index, uint8_t subindex, uint8_t *buff, uint16_t 
 }
 /////////////////////////////////////////////////////////////////////
 // Функция:
-uint32_t writeObjectOD(uint16_t index, uint8_t subindex, uint8_t *buff, uint16_t buffSize)
+uint32_t writeObjectOD(uint16_t index, uint8_t subindex, uint8_t *buff, uint32_t buffSize)
 {
 	uint32_t errCode = INTERACTION_SUCCESSFUL;
 	uint16_t objNum = 0;
-	uint16_t objEntrySize = 0;
+	uint32_t objEntrySize = 0;
 	errCode = requestControl(index, subindex, WRITE_REQUEST, &objNum, &objEntrySize);
 
 	if (errCode)
@@ -638,7 +638,7 @@ uint32_t writeObjectOD(uint16_t index, uint8_t subindex, uint8_t *buff, uint16_t
 		return errCode;
 	}
 
-	if (objEntrySize != buffSize)
+	if (objEntrySize < buffSize)
 	{
 		return INVALID_VALUE_FOR_PARAMETER;
 	}
@@ -647,6 +647,5 @@ uint32_t writeObjectOD(uint16_t index, uint8_t subindex, uint8_t *buff, uint16_t
 	{
 		memcpy(objDictionary[objNum]->entry->data, buff, buffSize);
 	}
-
 	return errCode;
 }
