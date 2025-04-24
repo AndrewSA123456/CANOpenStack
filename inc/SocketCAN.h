@@ -25,17 +25,22 @@ void setFilterSocketCAN(int sockDesc,
 // Функция: принять сообщение по CAN
 // в блокирующем режиме
 int socketCANReceive(int sockDesc,
-	struct can_frame *CANframe);
+					 struct can_frame *CANframe);
 /////////////////////////////////////////////
 // Функция: принять сообщение по CAN
 // в неблокирующем режиме, используя poll
 int socketCANReceiveNotBlocking(int sockDesc,
-			   struct can_frame *CANframe,
-			   int mStimeout);
+								struct can_frame *CANframe,
+								int mStimeout);
 /////////////////////////////////////////////
 // Функция: передать сообщение по CAN
 int socketCANTransmit(int sockDesc,
 					  uint32_t message_id,
 					  uint8_t message_len,
 					  uint8_t *message_data);
+/////////////////////////////////////////////
+// Функция: передать сообщение по CAN
+// на вход принимаем сразу CAN кадр
+int socketCANTransmitFrame(int sockDesc,
+						   struct can_frame frame);
 #endif //__SOCKETCAN_H

@@ -133,3 +133,17 @@ int socketCANTransmit(int sockDesc, uint32_t message_id, uint8_t message_len, ui
 
 	return SOCKET_CAN_OK;
 }
+/////////////////////////////////////////////////////////////////////
+// Функция: передать сообщение по CAN на вход принимаем сразу CAN кадр
+int socketCANTransmitFrame(int sockDesc, struct can_frame frame)
+{
+	// Отправляем кадр CAN
+	if (write(sockDesc, &frame, sizeof(struct can_frame)) != sizeof(struct can_frame))
+	{
+		perror("Write");
+		close(sockDesc);
+		return SOCKET_CAN_ERROR;
+	}
+
+	return SOCKET_CAN_OK;
+}
